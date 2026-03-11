@@ -11,6 +11,3 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 4. 等待所需模块安装完成之后，运行 app.py 脚本即可执行车牌检测+车牌识别程序，检测图片或视频放在【uploads】文件夹，结果将会输出到【results】文件夹
-
-5. 运行 GUI.py 可以使用图形化界面进行车牌识别
-
