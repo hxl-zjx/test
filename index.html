@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能车牌识别系统 | YOLOv8 + CNN</title>
+    <!-- 引入Tailwind CSS（无需本地安装，直接在线使用） -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入Font Awesome图标（用于上传、加载、汽车图标） -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 自定义配置：科技蓝主色调 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36D399',
+                        neutral: '#F3F4F6',
+                        dark: '#1E293B'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            /* 磨砂玻璃效果 */
+            .backdrop-blur {
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+            }
+            /* 加载动画 */
+            .pulse {
+                animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            @keyframes pulse {
+                0%, 100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.5;
+                }
+            }
+            /* 车牌结果高亮 */
+            .plate-highlight {
+                background: linear-gradient(120deg, #FFF3C7 0%, #FFE898 100%);
+                border: 2px solid #F59E0B;
+                box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+            }
+            /* 视频预览样式 */
+            .video-preview {
+                max-width: 100%;
+                border-radius: 0.5rem;
+                border: 1px solid #e5e7eb;
+            }
+            /* 关键帧预览样式 */
+            .frame-preview {
+                max-width: 100%;
+                border-radius: 0.5rem;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 font-sans text-dark">
+    <!-- 顶部导航栏 -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur shadow-sm">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fa fa-car text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">智能车牌识别系统</h1>
+            </div>
+            <div class="text-sm text-gray-500 hidden md:inline">
+                基于 YOLOv8 + CNN 深度学习模型 | 支持图片/视频识别
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-8 md:py-16">
+        <div class="max-w-5xl mx-auto">
+            <!-- 核心功能卡片 -->
+            <div class="bg-white rounded-2xl shadow-xl p-6 md:p-8 mb-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-2xl md:text-3xl font-bold mb-2">上传图片/视频识别车牌</h2>
+                    <p class="text-gray-500 max-w-2xl mx-auto">
+                        图片支持 PNG、JPG、JPEG 格式（≤5MB）；视频支持 MP4、AVI、MOV 格式（≤100MB）
+                    </p>
+                </div>
+
+                <!-- 上传类型切换 -->
+                <div class="flex justify-center mb-6 gap-4">
+                    <button id="img-tab" class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
+                        <i class="fa fa-file-image-o mr-2"></i>图片识别
+                    </button>
+                    <button id="video-tab" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+                        <i class="fa fa-file-video-o mr-2"></i>视频识别
+                    </button>
+                </div>
+
+                <!-- 上传区域（核心交互） -->
+                <div id="upload-area" class="border-2 border-dashed border-primary/30 rounded-xl bg-primary/5 transition-all duration-300 hover:bg-primary/10 mb-8">
+                    <div class="p-12 text-center" id="upload-content">
+                        <i class="fa fa-cloud-upload text-5xl text-primary mb-4"></i>
+                        <p class="mb-2 text-gray-600" id="upload-tip">点击选择图片或拖放至此处</p>
+                        <p class="text-xs text-gray-400" id="upload-type-tip">支持 PNG、JPG、JPEG（≤5MB）</p>
+                        <input type="file" id="file-input" accept="image/png,image/jpg,image/jpeg" class="hidden" />
+                        <button onclick="document.getElementById('file-input').click()" class="mt-4 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
+                            选择文件
+                        </button>
+                    </div>
+
+                    <!-- 预览容器（图片/视频） -->
+                    <div id="preview-container" class="hidden p-4">
+                        <div class="relative">
+                            <!-- 图片预览 -->
+                            <img id="preview-image" class="max-w-full h-auto rounded-lg border border-gray-200 hidden" />
+                            <!-- 视频预览 -->
+                            <video id="preview-video" class="video-preview hidden" controls></video>
+                            <button id="reset-upload" class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600 transition-colors">
+                                <i class="fa fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 识别按钮（默认隐藏） -->
+                <button id="recognize-btn" class="w-full py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 font-medium hidden">
+                    <i class="fa fa-search"></i>
+                    开始识别
+                </button>
+
+                <!-- 加载中状态（默认隐藏） -->
+                <div id="loading-state" class="w-full py-3 rounded-lg bg-neutral flex items-center justify-center gap-2 font-medium hidden pulse">
+                    <i class="fa fa-spinner fa-spin"></i>
+                    <span id="loading-text">模型推理中...请稍候</span>
+                </div>
+            </div>
+
+            <!-- 识别结果卡片（默认隐藏） -->
+            <div id="result-card" class="hidden bg-white rounded-2xl shadow-xl p-6 md:p-8">
+                <div class="flex flex-col md:flex-row gap-8">
+                    <!-- 左侧：结果预览（图片/视频关键帧） -->
+                    <div class="md:w-1/2">
+                        <h3 class="text-lg font-semibold mb-3 text-gray-700">识别结果预览</h3>
+                        <div class="border border-gray-200 rounded-lg overflow-hidden">
+                            <!-- 图片/视频关键帧预览 -->
+                            <img id="result-image" class="w-full h-auto hidden" />
+                            <!-- 视频关键帧预览（优先显示） -->
+                            <img id="result-frame" class="frame-preview w-full h-auto hidden" />
+                            <!-- 原视频预览（次要） -->
+                            <video id="result-video" class="video-preview hidden" controls></video>
+                            <!-- 提示文字 -->
+                            <div id="video-tip" class="p-4 text-center text-gray-500 hidden">
+                                <i class="fa fa-info-circle mr-2"></i>
+                                以下为视频中最清晰帧的识别结果，完整视频可点击下方播放
+                            </div>
+                        </div>
+                        <!-- 视频播放按钮（仅视频识别显示） -->
+                        <button id="play-video-btn" class="mt-4 w-full py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center justify-center gap-2 font-medium hidden">
+                            <i class="fa fa-play-circle"></i>
+                            播放完整标注视频
+                        </button>
+                    </div>
+
+                    <!-- 右侧：识别信息 -->
+                    <div class="md:w-1/2 flex flex-col justify-center">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-700">识别结果</h3>
+
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-500 mb-2">识别到的车牌</label>
+                            <div id="plate-result" class="plate-highlight text-2xl md:text-3xl font-mono font-bold text-orange-600 rounded-lg px-4 py-3 text-center whitespace-pre-wrap"></div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-neutral rounded-lg p-4">
+                                <label class="block text-sm font-medium text-gray-500 mb-1">识别耗时</label>
+                                <div id="time-cost" class="font-semibold text-dark"></div>
+                            </div>
+                            <div class="bg-neutral rounded-lg p-4">
+                                <label class="block text-sm font-medium text-gray-500 mb-1">文件名称</label>
+                                <div id="file-name" class="font-semibold text-dark text-sm truncate"></div>
+                            </div>
+                        </div>
+
+                        <button id="another-recognize" class="mt-6 py-3 bg-secondary text-white rounded-lg hover:bg-secondary/90 transition-colors flex items-center justify-center gap-2 font-medium">
+                            <i class="fa fa-refresh"></i>
+                            识别另一文件
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-dark text-white/70 py-6 mt-16">
+        <div class="container mx-auto px-4 text-center text-sm">
+            <p>© 2026 智能车牌识别系统 | 基于 YOLOv8 + CNN 构建 | 支持图片/视频识别</p>
+        </div>
+    </footer>
+
+    <script>
+        // 核心变量
+        let selectedFile = null;
+        let fileType = 'image'; // 默认图片类型
+        let videoResultUrl = ""; // 存储视频结果URL
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+        const uploadContent = document.getElementById('upload-content');
+        const uploadTip = document.getElementById('upload-tip');
+        const uploadTypeTip = document.getElementById('upload-type-tip');
+        const previewContainer = document.getElementById('preview-container');
+        const previewImage = document.getElementById('preview-image');
+        const previewVideo = document.getElementById('preview-video');
+        const resetUpload = document.getElementById('reset-upload');
+        const recognizeBtn = document.getElementById('recognize-btn');
+        const loadingState = document.getElementById('loading-state');
+        const loadingText = document.getElementById('loading-text');
+        const resultCard = document.getElementById('result-card');
+        const resultImage = document.getElementById('result-image');
+        const resultFrame = document.getElementById('result-frame'); // 视频关键帧
+        const resultVideo = document.getElementById('result-video');
+        const videoTip = document.getElementById('video-tip');
+        const playVideoBtn = document.getElementById('play-video-btn');
+        const plateResult = document.getElementById('plate-result');
+        const timeCost = document.getElementById('time-cost');
+        const fileName = document.getElementById('file-name');
+        const anotherRecognize = document.getElementById('another-recognize');
+        const imgTab = document.getElementById('img-tab');
+        const videoTab = document.getElementById('video-tab');
+
+        // 1. 切换上传类型（图片/视频）
+        imgTab.addEventListener('click', () => {
+            fileType = 'image';
+            imgTab.classList.remove('bg-gray-200', 'text-gray-700');
+            imgTab.classList.add('bg-primary', 'text-white');
+            videoTab.classList.remove('bg-primary', 'text-white');
+            videoTab.classList.add('bg-gray-200', 'text-gray-700');
+            fileInput.accept = 'image/png,image/jpg,image/jpeg';
+            uploadTip.textContent = '点击选择图片或拖放至此处';
+            uploadTypeTip.textContent = '支持 PNG、JPG、JPEG（≤5MB）';
+            resetUploadState();
+        });
+
+        videoTab.addEventListener('click', () => {
+            fileType = 'video';
+            videoTab.classList.remove('bg-gray-200', 'text-gray-700');
+            videoTab.classList.add('bg-primary', 'text-white');
+            imgTab.classList.remove('bg-primary', 'text-white');
+            imgTab.classList.add('bg-gray-200', 'text-gray-700');
+            fileInput.accept = 'video/mp4,video/avi,video/mov';
+            uploadTip.textContent = '点击选择视频或拖放至此处';
+            uploadTypeTip.textContent = '支持 MP4、AVI、MOV（≤100MB）';
+            resetUploadState();
+        });
+
+        // 2. 文件选择事件
+        fileInput.addEventListener('change', handleFileSelect);
+
+        // 3. 拖放事件
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('bg-primary/20');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('bg-primary/20');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('bg-primary/20');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect({ target: { files: e.dataTransfer.files } });
+            }
+        });
+
+        // 4. 重置上传
+        resetUpload.addEventListener('click', resetUploadState);
+
+        // 5. 开始识别
+        recognizeBtn.addEventListener('click', startRecognition);
+
+        // 6. 识别另一张
+        anotherRecognize.addEventListener('click', resetUploadState);
+
+        // 7. 播放完整视频
+        playVideoBtn.addEventListener('click', () => {
+            resultFrame.classList.add('hidden');
+            videoTip.classList.add('hidden');
+            resultVideo.classList.remove('hidden');
+            resultVideo.src = videoResultUrl;
+            playVideoBtn.classList.add('hidden');
+        });
+
+        // 处理文件选择
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 校验文件类型
+            if (fileType === 'image') {
+                const validTypes = ['image/png', 'image/jpg', 'image/jpeg'];
+                if (!validTypes.includes(file.type)) {
+                    alert('请上传 PNG、JPG 或 JPEG 格式的图片！');
+                    return;
+                }
+                // 校验文件大小（5MB）
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('图片大小不能超过 5MB！');
+                    return;
+                }
+            } else {
+                const validTypes = ['video/mp4', 'video/avi', 'video/mov'];
+                if (!validTypes.includes(file.type)) {
+                    alert('请上传 MP4、AVI 或 MOV 格式的视频！');
+                    return;
+                }
+                // 校验文件大小（100MB）
+                if (file.size > 100 * 1024 * 1024) {
+                    alert('视频大小不能超过 100MB！');
+                    return;
+                }
+            }
+
+            selectedFile = file;
+            // 显示预览
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                uploadContent.classList.add('hidden');
+                previewContainer.classList.remove('hidden');
+                recognizeBtn.classList.remove('hidden');
+
+                if (fileType === 'image') {
+                    previewImage.src = event.target.result;
+                    previewImage.classList.remove('hidden');
+                    previewVideo.classList.add('hidden');
+                } else {
+                    previewVideo.src = event.target.result;
+                    previewVideo.classList.remove('hidden');
+                    previewImage.classList.add('hidden');
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 重置上传状态
+        function resetUploadState() {
+            selectedFile = null;
+            videoResultUrl = "";
+            fileInput.value = '';
+            uploadContent.classList.remove('hidden');
+            previewContainer.classList.add('hidden');
+            recognizeBtn.classList.add('hidden');
+            loadingState.classList.add('hidden');
+            resultCard.classList.add('hidden');
+            uploadArea.classList.remove('bg-primary/20');
+            previewImage.src = '';
+            previewVideo.src = '';
+            resultImage.src = '';
+            resultFrame.src = '';
+            resultVideo.src = '';
+            resultImage.classList.add('hidden');
+            resultFrame.classList.add('hidden');
+            resultVideo.classList.add('hidden');
+            videoTip.classList.add('hidden');
+            playVideoBtn.classList.add('hidden');
+        }
+
+        // 开始识别
+        function startRecognition() {
+            if (!selectedFile) return;
+
+            // 显示加载状态
+            recognizeBtn.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            if (fileType === 'video') {
+                loadingText.textContent = '视频处理中（提取关键帧+识别）...请稍候';
+            }
+
+            // 构建FormData
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('file_type', fileType);
+
+            // 记录开始时间
+            const startTime = Date.now();
+
+            // 发送请求
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    throw new Error(data.error || '识别失败');
+                }
+                // 计算耗时
+                const endTime = Date.now();
+                const cost = ((endTime - startTime) / 1000).toFixed(2) + ' 秒';
+
+                // 显示结果
+                loadingState.classList.add('hidden');
+                resultCard.classList.remove('hidden');
+
+                // 显示结果预览（区分图片/视频）
+                if (data.file_type === 'image') {
+                    // 图片识别：显示标注后的图片
+                    resultImage.src = data.file_url;
+                    resultImage.classList.remove('hidden');
+                    resultFrame.classList.add('hidden');
+                    resultVideo.classList.add('hidden');
+                    videoTip.classList.add('hidden');
+                    playVideoBtn.classList.add('hidden');
+                } else {
+                    // 视频识别：优先显示关键帧图片
+                    videoResultUrl = data.file_url;
+                    if (data.frame_url) {
+                        resultFrame.src = data.frame_url;
+                        resultFrame.classList.remove('hidden');
+                        videoTip.classList.remove('hidden');
+                        playVideoBtn.classList.remove('hidden');
+                    } else {
+                        // 无关键帧时显示视频
+                        resultVideo.src = data.file_url;
+                        resultVideo.classList.remove('hidden');
+                    }
+                    resultImage.classList.add('hidden');
+                }
+
+                // 显示识别结果
+                plateResult.innerText = data.plate.join('\n'); // 支持多个车牌换行显示
+                timeCost.innerText = data.process_time + ' 秒';
+                fileName.innerText = selectedFile.name;
+
+                // 滚动到结果区域
+                resultCard.scrollIntoView({ behavior: 'smooth' });
+            })
+            .catch(error => {
+                loadingState.classList.add('hidden');
+                recognizeBtn.classList.remove('hidden');
+                alert('识别出错：' + error.message);
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
