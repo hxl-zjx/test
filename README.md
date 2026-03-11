@@ -1,13 +1,40 @@
-   1. 建议单独创建一个虚拟环境，下载 requirements.txt 中指定的版本，不然有些模块的版本会冲突，尤其是 torch
-   2. 创建好虚拟环境之后，切换到虚拟环境下，比如终端这样： (venv) PS D:\Desktop\plate-recognition_YOLOv8_CNN-main>
-   3. 路径前有一个 (venv) 就说明已经在虚拟环境下了，然后在终端运行下面两个指令：
+# 车牌检测与识别系统 (基于YOLOv8 + CNN)
 
-```python
-python.exe -m pip install --upgrade pip
-```
+一个轻量、高效的车牌检测与识别系统，支持图片/视频格式的车牌自动化检测与字符识别，开箱即用。
 
-```python
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
+## ✨ 核心功能
+- 支持图片/视频文件的车牌检测与识别
+- 精准定位车牌区域（基于YOLOv8目标检测）
+- 高效识别车牌字符（基于CNN卷积神经网络）
+- 自动输出标注结果图与识别文本
+- 清晰的目录结构，易部署、易扩展
 
-4. 等待所需模块安装完成之后，运行 app.py 脚本即可执行车牌检测+车牌识别程序，检测图片或视频放在【uploads】文件夹，结果将会输出到【results】文件夹
+## 📁 项目结构
+| 目录/文件               | 功能说明                                                         |
+|-------------------------|------------------------------------------------------------------|
+| `app.py`                | 程序主入口，运行后启动完整的检测+识别流程                        |
+| `detect_rec_plate.py`   | 核心业务逻辑，封装车牌检测与识别的核心算法                       |
+| `cv_puttext.py`         | OpenCV文字绘制工具，用于在结果图上标注车牌信息                   |
+| `requirements.txt`      | 项目依赖清单（含版本约束，避免环境冲突）                         |
+| `fonts/`                | 字体文件目录（platech.ttf，用于车牌文字绘制）                    |
+| `uploads/`              | 输入目录：存放待检测的图片/视频文件                              |
+| `results/`              | 输出目录：存放标注后的结果图、识别文本等                        |
+| `weights/`              | 模型权重目录：存放YOLOv8/CNN的预训练/自定义训练权重文件          |
+| `frames/`               | 临时目录：存放从视频中提取的帧图片（用于逐帧检测）               |
+
+## 🛠 环境搭建
+### 前置条件
+- Python 3.8+（推荐3.9/3.10，兼容性最佳）
+- 显卡环境（可选）：NVIDIA GPU + CUDA 11.6+（加速模型推理）
+
+### 安装步骤
+1. **创建虚拟环境（推荐）**
+   ```bash
+   # 创建虚拟环境
+   python -m venv venv
+   
+   # 激活虚拟环境
+   # Windows
+   venv\Scripts\activate
+   # Linux/Mac
+   source venv/bin/activate
